@@ -3,6 +3,7 @@ import CoreImage
 
 class HandTracker: ObservableObject {
     static let shared = HandTracker()
+    private let aslRecognizer = ASLRecognizer.shared
     
     @Published var handLandmarks: [VNHumanHandPoseObservation.JointName: CGPoint] = [:]
     
@@ -31,6 +32,7 @@ class HandTracker: ObservableObject {
         // Update landmarks on main thread
         DispatchQueue.main.async {
             self.handLandmarks = newLandmarks
+            self.aslRecognizer.recognizeGesture(from: newLandmarks)
         }
     }
 } 

@@ -3,8 +3,59 @@ import AVFoundation
 
 struct CameraView: NSViewRepresentable {
     @StateObject private var cameraManager = CameraManager.shared
-    private let captureSession = AVCaptureSession()
-    private let videoOutput = AVCaptureVideoDataOutput()
+    let captureSession = AVCaptureSession()
+    let videoOutput = AVCaptureVideoDataOutput()
+    
+    class Coordinator: NSObject {
+        var captureSession: AVCaptureSession
+        var videoOutput: AVCaptureVideoDataOutput
+        var observer: NSObjectProtocol?
+        
+        init(captureSession: AVCaptureSession, videoOutput: AVCaptureVideoDataOutput) {
+            self.captureSession = captureSession
+            self.videoOutput = videoOutput
+            super.init()
+            
+            // Listen for camera changes
+            observer = NotificationCenter.default.addObserver(
+                forName: .cameraDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let camera = notification.object as? AVCaptureDevice else { return }
+                self?.updateCamera(camera)
+            }
+        }
+        
+        deinit {
+            if let observer = observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+        
+        func updateCamera(_ camera: AVCaptureDevice) {
+            captureSession.beginConfiguration()
+            
+            // Remove existing inputs
+            captureSession.inputs.forEach { captureSession.removeInput($0) }
+            
+            // Add new input
+            do {
+                let input = try AVCaptureDeviceInput(device: camera)
+                if captureSession.canAddInput(input) {
+                    captureSession.addInput(input)
+                }
+            } catch {
+                print("Error setting up camera input: \(error.localizedDescription)")
+            }
+            
+            captureSession.commitConfiguration()
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(captureSession: captureSession, videoOutput: videoOutput)
+    }
     
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -16,17 +67,6 @@ struct CameraView: NSViewRepresentable {
         view.wantsLayer = true
         
         setupCaptureSession()
-        
-        // Listen for camera changes
-        NotificationCenter.default.addObserver(
-            forName: .cameraDidChange,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let camera = notification.object as? AVCaptureDevice {
-                updateCamera(camera)
-            }
-        }
         
         return view
     }
@@ -57,21 +97,5 @@ struct CameraView: NSViewRepresentable {
         DispatchQueue.global(qos: .userInitiated).async {
             captureSession.startRunning()
         }
-    }
-    
-    private func updateCamera(_ camera: AVCaptureDevice) {
-        captureSession.beginConfiguration()
-        
-        // Remove existing input
-        captureSession.inputs.forEach { captureSession.removeInput($0) }
-        
-        // Add new input
-        if let input = try? AVCaptureDeviceInput(device: camera) {
-            if captureSession.canAddInput(input) {
-                captureSession.addInput(input)
-            }
-        }
-        
-        captureSession.commitConfiguration()
     }
 } 

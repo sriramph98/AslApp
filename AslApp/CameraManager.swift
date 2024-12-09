@@ -8,22 +8,45 @@ class CameraManager: ObservableObject {
     @Published var selectedCamera: AVCaptureDevice?
     
     private init() {
-        loadAvailableCameras()
-        selectedCamera = availableCameras.first
+        // Request camera access first
+        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                self?.loadAvailableCameras()
+            }
+        }
     }
     
     func loadAvailableCameras() {
-        availableCameras = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera],
+        // Get all video devices
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [
+                .builtInWideAngleCamera,
+                .external
+            ],
             mediaType: .video,
             position: .unspecified
-        ).devices
+        )
+        
+        availableCameras = discoverySession.devices
+        
+        // Select the first camera if none is selected
+        if selectedCamera == nil {
+            selectedCamera = availableCameras.first
+        }
+        
+        // Print available cameras for debugging
+        print("Available cameras: \(availableCameras.map { $0.localizedName })")
     }
     
     func selectCamera(_ camera: AVCaptureDevice) {
+        guard camera != selectedCamera else { return }
+        
         selectedCamera = camera
-        // Notify your capture session to switch cameras
-        NotificationCenter.default.post(name: .cameraDidChange, object: camera)
+        NotificationCenter.default.post(
+            name: .cameraDidChange,
+            object: camera
+        )
     }
 }
 
