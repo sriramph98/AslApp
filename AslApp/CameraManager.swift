@@ -15,6 +15,36 @@ class CameraManager: NSObject, ObservableObject {
     private var gestureHistory: [CGPoint] = []
     private let maxGestureHistoryLength = 30
     
+    private let aslConfigurations: [String: ([VNHumanHandPoseObservation.JointName: CGPoint]) -> Bool] = [
+        "A": { landmarks in
+            // Define the conditions for the letter "A"
+            guard let thumbTip = landmarks[.thumbTip],
+                  let indexTip = landmarks[.indexTip],
+                  let middleTip = landmarks[.middleTip],
+                  let ringTip = landmarks[.ringTip],
+                  let littleTip = landmarks[.littleTip] else { return false }
+            
+            // Check if fingers are closed (close to palm) except thumb
+            let fingersAreClosed = indexTip.y < 0.3 && middleTip.y < 0.3 && ringTip.y < 0.3 && littleTip.y < 0.3
+            let thumbIsUp = thumbTip.y > 0.5
+            
+            return fingersAreClosed && thumbIsUp
+        },
+        "B": { landmarks in
+            // Define the conditions for the letter "B"
+            guard let indexTip = landmarks[.indexTip],
+                  let middleTip = landmarks[.middleTip],
+                  let ringTip = landmarks[.ringTip],
+                  let littleTip = landmarks[.littleTip] else { return false }
+            
+            // Check if all fingers are extended upward
+            let fingersAreUp = indexTip.y > 0.7 && middleTip.y > 0.7 && ringTip.y > 0.7 && littleTip.y > 0.7
+            
+            return fingersAreUp
+        }
+        // Add more configurations for other letters
+    ]
+    
     override init() {
         super.init()
         handPoseRequest.maximumHandCount = 1
@@ -95,47 +125,25 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     private func processHandPose(_ observation: VNHumanHandPoseObservation) throws {
         let recognizedPoints = try observation.recognizedPoints(.all)
         
-        // Create an ordered array of points for visualization
-        var newPoints: [CGPoint] = Array(repeating: .zero, count: 21)
+        // Create a dictionary of recognized points
+        var landmarks: [VNHumanHandPoseObservation.JointName: CGPoint] = [:]
         
-        // Map Vision points to ordered array
         for (key, point) in recognizedPoints where point.confidence > 0.3 {
-            let location = point.location
-            let viewPoint = CGPoint(x: location.x * 640, y: (1 - location.y) * 480)
-            
-            // Map joint names to indices
-            let index: Int
-            switch key {
-            case .wrist: index = 0
-            case .thumbCMC: index = 1
-            case .thumbMP: index = 2
-            case .thumbIP: index = 3
-            case .thumbTip: index = 4
-            case .indexMCP: index = 5
-            case .indexPIP: index = 6
-            case .indexDIP: index = 7
-            case .indexTip: index = 8
-            case .middleMCP: index = 9
-            case .middlePIP: index = 10
-            case .middleDIP: index = 11
-            case .middleTip: index = 12
-            case .ringMCP: index = 13
-            case .ringPIP: index = 14
-            case .ringDIP: index = 15
-            case .ringTip: index = 16
-            case .littleMCP: index = 17
-            case .littlePIP: index = 18
-            case .littleDIP: index = 19
-            case .littleTip: index = 20
-            default: continue // Handle any future cases
+            landmarks[key] = CGPoint(x: point.location.x, y: point.location.y)
+        }
+        
+        // Check each ASL configuration
+        for (letter, configuration) in aslConfigurations {
+            if configuration(landmarks) {
+                DispatchQueue.main.async {
+                    self.detectedSign = "Detected: \(letter)"
+                }
+                return
             }
-            
-            newPoints[index] = viewPoint
         }
         
         DispatchQueue.main.async {
-            self.displayPoints = newPoints
-            self.detectedSign = newPoints.isEmpty ? "No hand detected" : "Hand detected"
+            self.detectedSign = "No sign detected"
         }
     }
 } 
